@@ -1,0 +1,65 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AWS SAM template to demontrate API versioning
+Parameters:
+  basePathParameter:
+    Type: String
+    Default: 'v1'
+    # Allow only upto v2
+    AllowedValues:
+      - 'v1'
+      - 'v2'
+    Description: Enter the API version
+Resources:
+  myAPI:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: !Join ["-", ["myAPI" , !Ref basePathParameter]]
+      StageName: dev
+  myMapping:
+    Type: 'AWS::ApiGateway::BasePathMapping'
+    Properties:
+      BasePath: !Ref basePathParameter
+      DomainName: 'api.test.org'
+      RestApiId: !Ref myAPI
+      Stage: !Ref myAPI.Stage
+  myFunction:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      FunctionName: !Join ["-", ["myFunction" , !Ref basePathParameter]]
+      Handler: my_function.lambda_handler
+      Runtime: python3.8
+      CodeUri: .
+      Description: sample function to demonstrate API versioning
+      MemorySize: 128
+      Timeout: 5
+      Role: !GetAtt LambdabasicIAMRole.Arn
+      Environment: 
+        Variables:
+          VERSION_NUM: !Ref basePathParameter
+          DESCRIPTION: !Ref descriptionParameter
+      Events:
+        ApiEvent:
+          Type: Api
+          Properties:
+            #AWS SAM currently supports Lambda proxy integration only.
+            #https://github.com/awslabs/aws-sam-cli/issues/1003
+            Path: /resource
+            Method: get
+            RestApiId:
+              Ref: myAPI
+  LambdabasicIAMRole:
+    Type: AWS::IAM::Role
+    Properties: 
+      AssumeRolePolicyDocument: {"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"lambda.amazonaws.com"},"Action":"sts:AssumeRole"}]}
+      Description: sample lambda function to demonstrate API versioning
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AWSLambdaFullAccess
+      RoleName: !Sub LambdabasicIAMRole-${AWS::Region}
+Outputs:
+  myAPIURL:
+    Description: "API endpoint"
+    Value: !Sub "https://${myAPI}.execute-api.${AWS::Region}.amazonaws.com/${myAPI.Stage}/resource"
+  myAPIMapURL:
+    Description: "API GW mapped URL"
+    Value: !Join ["/", ["https://api.test.org" , !Ref basePathParameter , "resource/"]]
